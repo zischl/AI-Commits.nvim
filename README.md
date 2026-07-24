@@ -45,7 +45,7 @@ require("ai-commits").setup({
   model = "gemini-2.5-flash",
   temperature = 0.2,
   include_history = true, -- Include recent commit messages for context and style
-  history_count = 10,     -- Number of recent commit messages to include
+  history_count = 3,     -- Number of recent commit messages to include
   prompt = [[
 You are an expert developer. Generate a clean, conventional git commit message based on the staged changes.
 If recent commit messages are provided below, analyze them to see if this commit is related and match the 

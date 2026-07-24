@@ -4,7 +4,7 @@ local defaults = {
 	model = "gemini-2.5-flash",
 	temperature = 0.2,
 	include_history = true,
-	history_count = 10,
+	history_count = 3,
 	prompt = [[
 You are an expert developer. Generate a clean, conventional git commit message based on the staged changes.
 If recent commit messages are provided below, analyze them to see if this commit is related and match the repository's writing style, scope conventions, and tone.
