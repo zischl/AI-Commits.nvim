@@ -1,6 +1,7 @@
 # AI-Commits.nvim
 
-AI-powered conventional git commit message generator for Neovim, using Google Gemini (streaming).
+AI-powered conventional git commit message generator for Neovim, using Google Gemini.
+Altho it's only for gemini rn, will add others later.
 
 ## Features
 
