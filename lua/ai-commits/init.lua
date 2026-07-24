@@ -3,16 +3,17 @@ local M = {}
 local defaults = {
 	model = "gemini-2.5-flash",
 	temperature = 0.2,
+	include_history = true,
+	history_count = 10,
 	prompt = [[
 You are an expert developer. Generate a clean, conventional git commit message based on the staged changes.
+If recent commit messages are provided below, analyze them to see if this commit is related and match the repository's writing style, scope conventions, and tone.
 Strictly adhere to this format:
 1. The first line must be a concise, single-line summary prefixing a dash and a space.
 2. Followed by exactly one blank line.
 3. Followed by a detailed dash plus space prefixed list explaining the specific changes.
 
 Generate only the commit message text.
-
-Diff:
 ]],
 }
 
@@ -40,7 +41,16 @@ function M.generate_commit_msg(opts)
 		return
 	end
 
-	local prompt = config.prompt .. diff
+	local history_text = ""
+	if config.include_history then
+		local count = config.history_count or 10
+		local history = vim.fn.system(string.format('git log -n %d --format="- %%s"', count))
+		if vim.v.shell_error == 0 and history and history ~= "" and not history:match("^fatal:") then
+			history_text = "\nRecent commit messages for context and style reference:\n" .. history .. "\n"
+		end
+	end
+
+	local prompt = config.prompt .. history_text .. "\nDiff:\n" .. diff
 
 	local payload = {
 		contents = {
