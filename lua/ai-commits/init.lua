@@ -36,8 +36,8 @@ function M.generate_commit_msg(opts)
 	end
 
 	local diff = vim.fn.system("git diff --staged")
-	if diff == "" then
-		vim.notify("No staged changes found", vim.log.levels.WARN)
+	if vim.v.shell_error ~= 0 or diff == "" or diff:match("^fatal:") then
+		vim.notify("No staged changes found or not a git repository", vim.log.levels.WARN)
 		return
 	end
 
@@ -96,6 +96,20 @@ function M.generate_commit_msg(opts)
 	}
 
 	local bufnr = vim.api.nvim_get_current_buf()
+	if not vim.bo[bufnr].modifiable or vim.bo[bufnr].filetype ~= "gitcommit" then
+		for _, b in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.api.nvim_buf_is_valid(b) and vim.bo[b].modifiable and vim.bo[b].filetype == "gitcommit" then
+				bufnr = b
+				break
+			end
+		end
+	end
+
+	if not vim.api.nvim_buf_is_valid(bufnr) or not vim.bo[bufnr].modifiable then
+		vim.notify("Cannot generate commit message: active buffer is not modifiable", vim.log.levels.ERROR)
+		os.remove(temp_file)
+		return
+	end
 
 	local current_line = 0
 	local current_col = 0
@@ -124,7 +138,7 @@ function M.generate_commit_msg(opts)
 							local text = chunk.candidates[1].content.parts[1].text
 							if text then
 								vim.schedule(function()
-									if vim.api.nvim_buf_is_valid(bufnr) then
+									if vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].modifiable then
 										local lines = vim.split(text, "\n", { plain = true })
 										for i, l in ipairs(lines) do
 											if i == 1 then
@@ -137,7 +151,8 @@ function M.generate_commit_msg(opts)
 												local new_line = existing_line:sub(1, current_col)
 													.. l
 													.. existing_line:sub(current_col + 1)
-												vim.api.nvim_buf_set_lines(
+												pcall(
+													vim.api.nvim_buf_set_lines,
 													bufnr,
 													current_line,
 													current_line + 1,
@@ -147,7 +162,8 @@ function M.generate_commit_msg(opts)
 												current_col = current_col + #l
 											else
 												current_line = current_line + 1
-												vim.api.nvim_buf_set_lines(
+												pcall(
+													vim.api.nvim_buf_set_lines,
 													bufnr,
 													current_line,
 													current_line,
