@@ -19,7 +19,18 @@ Generate only the commit message text.
 
 M.options = vim.deepcopy(defaults)
 
-local function open_commit_floater_win()
+function M.open_commit_floater_win()
+	if M.float_bufnr and vim.api.nvim_buf_is_valid(M.float_bufnr) then
+		local win = vim.fn.bufwinid(M.float_bufnr)
+		if win and win ~= -1 then
+			vim.api.nvim_set_current_win(win)
+			return M.float_bufnr
+		else
+			pcall(vim.api.nvim_buf_delete, M.float_bufnr, { force = true })
+			M.float_bufnr = nil
+		end
+	end
+
 	local width = math.floor(vim.o.columns * 0.75)
 	local height = math.floor(vim.o.lines * 0.6)
 	local row = math.floor((vim.o.lines - height) / 2)
@@ -30,6 +41,8 @@ local function open_commit_floater_win()
 	vim.api.nvim_buf_set_name(bufnr, temp_commit_file)
 	vim.bo[bufnr].filetype = "gitcommit"
 	vim.bo[bufnr].bufhidden = "wipe"
+
+	M.float_bufnr = bufnr
 
 	-- No one will notice..
 	local status_output = vim.fn.system("git status")
@@ -87,6 +100,9 @@ local function open_commit_floater_win()
 		group = group,
 		buffer = bufnr,
 		callback = function()
+			if M.float_bufnr == bufnr then
+				M.float_bufnr = nil
+			end
 			if commit_on_close then
 				local output = vim.fn.system({ "git", "commit", "-F", temp_commit_file })
 				local exit_code = vim.v.shell_error
@@ -187,32 +203,36 @@ function M.generate_commit_msg(opts)
 		url,
 	}
 
-	local bufnr = vim.api.nvim_get_current_buf()
-	local is_new_float = false
+	local current_buf = vim.api.nvim_get_current_buf()
+	local bufnr = nil
+	local is_float = false
 
-	if
-		not (vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].modifiable and vim.bo[bufnr].filetype == "gitcommit")
-	then
-		local found_buf = nil
-		for _, b in ipairs(vim.api.nvim_list_bufs()) do
-			if vim.api.nvim_buf_is_valid(b) and vim.bo[b].modifiable and vim.bo[b].filetype == "gitcommit" then
-				found_buf = b
-				break
-			end
+	if M.float_bufnr and vim.api.nvim_buf_is_valid(M.float_bufnr) then
+		local win = vim.fn.bufwinid(M.float_bufnr)
+		if win and win ~= -1 then
+			bufnr = M.float_bufnr
+			is_float = true
 		end
+	end
 
-		if found_buf then
-			bufnr = found_buf
+	if not bufnr then
+		if
+			vim.api.nvim_buf_is_valid(current_buf)
+			and vim.bo[current_buf].modifiable
+			and vim.bo[current_buf].filetype == "gitcommit"
+		then
+			bufnr = current_buf
+			is_float = false
 		else
-			bufnr = open_commit_floater_win()
-			is_new_float = true
+			bufnr = M.open_commit_floater_win()
+			is_float = true
 		end
 	end
 
 	local current_line = 0
 	local current_col = 0
 
-	if not is_new_float then
+	if not is_float then
 		vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
 	end
 
