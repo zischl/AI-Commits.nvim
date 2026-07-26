@@ -6,10 +6,10 @@ Altho it's only for gemini rn, will add others later.
 ## Features
 
 - Generates clean, conventional git commit messages based on staged changes (`git diff --staged`).
-- Older commit messages can be utilized for even more context.
-- Streams response directly into your active git commit buffer in real-time.
+- Analyzes recent commit history to match your repository's conventions and style.
+- Streams responses directly into your active git commit buffer in real-time.
+- **Global / Lazygit Support**: If invoked from a terminal, Lazygit, or code buffer where no `gitcommit` buffer is open, it automatically opens a floating window with the generated commit message!
 - Uses Google Gemini API (default model: `gemini-2.5-flash`).
-- Easy setup with flexible configuration.
 
 ## Requirements
 
@@ -25,13 +25,14 @@ Altho it's only for gemini rn, will add others later.
 return {
   "zischl/AI-Commits.nvim",
   cmd = { "AICommit", "GitAICommit" },
-  ft = "gitcommit",
   keys = {
-    { "<leader>gc", "<cmd>AICommit<cr>", ft = "gitcommit", desc = "Generate AI Commit Msg" },
+    { "<leader>gc", "<cmd>AICommit<cr>", desc = "Generate AI Commit Msg" },
   },
   opts = {
     model = "gemini-2.5-flash",
     temperature = 0.2,
+    include_history = true,
+    history_count = 3,
   },
 }
 ```
@@ -44,12 +45,11 @@ Default options:
 require("ai-commits").setup({
   model = "gemini-2.5-flash",
   temperature = 0.2,
-  include_history = true, -- Include recent commit messages for context and style
-  history_count = 3,     -- Number of recent commit messages to include
+  include_history = true,
+  history_count = 3,
   prompt = [[
 You are an expert developer. Generate a clean, conventional git commit message based on the staged changes.
-If recent commit messages are provided below, analyze them to see if this commit is related and match the 
-repository's writing style, scope conventions, and tone.
+If recent commit messages are provided below, analyze them to see if this commit is related and match the repository's writing style, scope conventions, and tone.
 Strictly adhere to this format:
 1. The first line must be a concise, single-line summary prefixing a dash and a space.
 2. Followed by exactly one blank line.
@@ -63,8 +63,9 @@ Generate only the commit message text.
 ## Usage
 
 1. Stage your changes using `git add`.
-2. Open a git commit message buffer (e.g. `git commit` or inside Neovim).
-3. Run `:AICommit` or press `<leader>gc` to generate the commit message.
+2. Press `<leader>gc` or run `:AICommit` from anywhere (Lazygit, terminal, or any buffer).
+   - If you are inside a `gitcommit` buffer, the generated message streams into your current buffer.
+   - If invoked from anywhere else, a **floating window** pops up and streams the AI commit message. Press `q`, `Q` or `<Esc>` to close the floating window.
 
 ## License
 
