@@ -238,70 +238,88 @@ function M.generate_commit_msg(opts)
 
 	vim.notify("Generating commit message (" .. config.model .. ")...", vim.log.levels.INFO)
 
+	local partial_line = ""
+
+	local function process_sse_line(line)
+		line = line:gsub("\r$", "")
+		if line:match("^data: ") then
+			local json_str = line:sub(7)
+			if json_str ~= "" and json_str ~= "[DONE]" then
+				local ok, chunk = pcall(vim.fn.json_decode, json_str)
+				if
+					ok
+					and chunk
+					and chunk.candidates
+					and chunk.candidates[1]
+					and chunk.candidates[1].content
+					and chunk.candidates[1].content.parts
+				then
+					for _, part in ipairs(chunk.candidates[1].content.parts) do
+						if part.text then
+							local text = part.text:gsub("\r", "")
+							vim.schedule(function()
+								if vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].modifiable then
+									local lines = vim.split(text, "\n", { plain = true })
+									for idx, l in ipairs(lines) do
+										if idx == 1 then
+											local existing_line = vim.api.nvim_buf_get_lines(
+												bufnr,
+												current_line,
+												current_line + 1,
+												false
+											)[1] or ""
+											local new_line = existing_line:sub(1, current_col)
+												.. l
+												.. existing_line:sub(current_col + 1)
+											pcall(
+												vim.api.nvim_buf_set_lines,
+												bufnr,
+												current_line,
+												current_line + 1,
+												false,
+												{ new_line }
+											)
+											current_col = current_col + #l
+										else
+											current_line = current_line + 1
+											pcall(
+												vim.api.nvim_buf_set_lines,
+												bufnr,
+												current_line,
+												current_line,
+												false,
+												{ l }
+											)
+											current_col = #l
+										end
+									end
+								end
+							end)
+						end
+					end
+				end
+			end
+		end
+	end
+
 	vim.fn.jobstart(cmd, {
 		stdout_buffered = false,
 		on_stdout = function(_, data)
 			if not data then
 				return
 			end
-			for _, line in ipairs(data) do
-				if line:match("^data: ") then
-					local json_str = line:sub(7)
-					if json_str ~= "" and json_str ~= "[DONE]" then
-						local ok, chunk = pcall(vim.fn.json_decode, json_str)
-						if
-							ok
-							and chunk.candidates
-							and chunk.candidates[1].content
-							and chunk.candidates[1].content.parts
-						then
-							local text = chunk.candidates[1].content.parts[1].text
-							if text then
-								vim.schedule(function()
-									if vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].modifiable then
-										local lines = vim.split(text, "\n", { plain = true })
-										for i, l in ipairs(lines) do
-											if i == 1 then
-												local existing_line = vim.api.nvim_buf_get_lines(
-													bufnr,
-													current_line,
-													current_line + 1,
-													false
-												)[1] or ""
-												local new_line = existing_line:sub(1, current_col)
-													.. l
-													.. existing_line:sub(current_col + 1)
-												pcall(
-													vim.api.nvim_buf_set_lines,
-													bufnr,
-													current_line,
-													current_line + 1,
-													false,
-													{ new_line }
-												)
-												current_col = current_col + #l
-											else
-												current_line = current_line + 1
-												pcall(
-													vim.api.nvim_buf_set_lines,
-													bufnr,
-													current_line,
-													current_line,
-													false,
-													{ l }
-												)
-												current_col = #l
-											end
-										end
-									end
-								end)
-							end
-						end
-					end
-				end
+
+			data[1] = partial_line .. data[1]
+			partial_line = data[#data]
+
+			for i = 1, #data - 1 do
+				process_sse_line(data[i])
 			end
 		end,
 		on_exit = function(_, exit_code)
+			if partial_line ~= "" then
+				process_sse_line(partial_line)
+			end
 			os.remove(temp_file)
 			vim.schedule(function()
 				if exit_code == 0 then
