@@ -250,9 +250,19 @@ function M.generate_commit_msg(opts)
 	vim.notify("Generating commit message (" .. config.model .. ")...", vim.log.levels.INFO)
 
 	local partial_line = ""
+	local generated_text = false
+	local api_error_msg = nil
 
 	local function process_sse_line(line)
 		line = line:gsub("\r$", "")
+		if line:match("^{") then
+			local ok, err_chunk = pcall(vim.fn.json_decode, line)
+			if ok and err_chunk and err_chunk.error and err_chunk.error.message then
+				api_error_msg = err_chunk.error.message
+				return
+			end
+		end
+
 		if line:match("^data: ") then
 			local json_str = line:sub(7)
 			if json_str ~= "" and json_str ~= "[DONE]" then
@@ -267,6 +277,7 @@ function M.generate_commit_msg(opts)
 				then
 					for _, part in ipairs(chunk.candidates[1].content.parts) do
 						if part.text then
+							generated_text = true
 							local text = part.text:gsub("\r", "")
 							vim.schedule(function()
 								if vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].modifiable then
@@ -308,6 +319,8 @@ function M.generate_commit_msg(opts)
 							end)
 						end
 					end
+				elseif ok and chunk and chunk.error and chunk.error.message then
+					api_error_msg = chunk.error.message
 				end
 			end
 		end
@@ -333,8 +346,12 @@ function M.generate_commit_msg(opts)
 			end
 			os.remove(temp_file)
 			vim.schedule(function()
-				if exit_code == 0 then
+				if exit_code == 0 and generated_text then
 					vim.notify("Commit message generated!", vim.log.levels.INFO)
+				elseif api_error_msg then
+					vim.notify("Gemini API Error: " .. api_error_msg, vim.log.levels.ERROR)
+				elseif exit_code == 0 then
+					vim.notify("Failed to generate commit message (Empty response or API error)", vim.log.levels.ERROR)
 				else
 					vim.notify("Error generating commit message (Exit Code: " .. exit_code .. ")", vim.log.levels.ERROR)
 				end

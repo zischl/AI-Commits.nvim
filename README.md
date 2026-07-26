@@ -24,6 +24,7 @@ Altho it's only for gemini rn, will add others later.
 ```lua
 return {
   "zischl/AI-Commits.nvim",
+  main = "ai-commits",
   cmd = { "AICommit", "GitAICommit" },
   keys = {
     { "<leader>gc", "<cmd>AICommit<cr>", desc = "Generate AI Commit Msg" },
