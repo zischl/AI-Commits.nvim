@@ -19,12 +19,104 @@ Generate only the commit message text.
 
 M.options = vim.deepcopy(defaults)
 
+local function open_commit_floater_win()
+	local width = math.floor(vim.o.columns * 0.75)
+	local height = math.floor(vim.o.lines * 0.6)
+	local row = math.floor((vim.o.lines - height) / 2)
+	local col = math.floor((vim.o.columns - width) / 2)
+
+	local temp_commit_file = vim.fn.tempname() .. "_COMMIT_EDITMSG"
+	local bufnr = vim.api.nvim_create_buf(true, false)
+	vim.api.nvim_buf_set_name(bufnr, temp_commit_file)
+	vim.bo[bufnr].filetype = "gitcommit"
+	vim.bo[bufnr].bufhidden = "wipe"
+
+	-- No one will notice..
+	local status_output = vim.fn.system("git status")
+	local initial_lines = {
+		"",
+		"",
+		"# Please enter the commit message for your changes. Lines starting",
+		"# with '#' will be ignored, and an empty message aborts the commit.",
+		"#",
+	}
+	if vim.v.shell_error == 0 and status_output and status_output ~= "" then
+		for line in status_output:gmatch("[^\r\n]+") do
+			table.insert(initial_lines, "# " .. line)
+		end
+	end
+
+	vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, initial_lines)
+
+	local opts = {
+		relative = "editor",
+		width = math.max(width, 40),
+		height = math.max(height, 10),
+		row = row,
+		col = col,
+		style = "minimal",
+		border = "rounded",
+		title = " COMMIT_EDITMSG ",
+		title_pos = "center",
+	}
+
+	local win = vim.api.nvim_open_win(bufnr, true, opts)
+	vim.wo[win].number = true
+	vim.wo[win].wrap = true
+
+	-- Keymaps
+	local close_opts = { buffer = bufnr, silent = true, desc = "Close AI Commit Window" }
+	vim.keymap.set("n", "q", "<cmd>close<cr>", close_opts)
+	vim.keymap.set("n", "Q", "<cmd>close<cr>", close_opts)
+	vim.keymap.set("n", "<Esc>", "<cmd>close<cr>", close_opts)
+
+	-- Commit if saved..
+	local commit_on_close = false
+	local group = vim.api.nvim_create_augroup("AICommitFloat_" .. bufnr, { clear = true })
+
+	vim.api.nvim_create_autocmd("BufWritePost", {
+		group = group,
+		buffer = bufnr,
+		callback = function()
+			commit_on_close = true
+		end,
+	})
+
+	-- On buffer wipeout/close: commit if saved, else abort
+	vim.api.nvim_create_autocmd("BufWipeout", {
+		group = group,
+		buffer = bufnr,
+		callback = function()
+			if commit_on_close then
+				local output = vim.fn.system({ "git", "commit", "-F", temp_commit_file })
+				local exit_code = vim.v.shell_error
+				os.remove(temp_commit_file)
+
+				vim.schedule(function()
+					if exit_code == 0 then
+						vim.notify("Git commit successful!\n" .. output, vim.log.levels.INFO)
+					else
+						vim.notify("Git commit failed:\n" .. output, vim.log.levels.ERROR)
+					end
+				end)
+			else
+				os.remove(temp_commit_file)
+				vim.schedule(function()
+					vim.notify("Git commit aborted (buffer was not saved).", vim.log.levels.WARN)
+				end)
+			end
+		end,
+	})
+
+	return bufnr
+end
+
 --- @param opts table|nil
 function M.setup(opts)
 	M.options = vim.tbl_deep_extend("force", defaults, opts or {})
 end
 
---- For now just for gemini, will add others later
+--- Generate AI commit message from staged changes
 --- @param opts table|nil
 function M.generate_commit_msg(opts)
 	local config = vim.tbl_deep_extend("force", M.options, opts or {})
@@ -96,25 +188,33 @@ function M.generate_commit_msg(opts)
 	}
 
 	local bufnr = vim.api.nvim_get_current_buf()
-	if not vim.bo[bufnr].modifiable or vim.bo[bufnr].filetype ~= "gitcommit" then
+	local is_new_float = false
+
+	if
+		not (vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].modifiable and vim.bo[bufnr].filetype == "gitcommit")
+	then
+		local found_buf = nil
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do
 			if vim.api.nvim_buf_is_valid(b) and vim.bo[b].modifiable and vim.bo[b].filetype == "gitcommit" then
-				bufnr = b
+				found_buf = b
 				break
 			end
 		end
-	end
 
-	if not vim.api.nvim_buf_is_valid(bufnr) or not vim.bo[bufnr].modifiable then
-		vim.notify("Cannot generate commit message: active buffer is not modifiable", vim.log.levels.ERROR)
-		os.remove(temp_file)
-		return
+		if found_buf then
+			bufnr = found_buf
+		else
+			bufnr = open_commit_floater_win()
+			is_new_float = true
+		end
 	end
 
 	local current_line = 0
 	local current_col = 0
 
-	vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
+	if not is_new_float then
+		vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
+	end
 
 	vim.notify("Generating commit message (" .. config.model .. ")...", vim.log.levels.INFO)
 
