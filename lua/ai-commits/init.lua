@@ -127,6 +127,31 @@ function M.open_commit_floater_win()
 	return bufnr
 end
 
+--- Check if a buffer is a git commit buffer
+--- @param bufnr number|nil Buffer number (defaults to current buffer if nil or 0)
+--- @return boolean
+function M.commit_buf_check(bufnr)
+	if not bufnr or bufnr == 0 then
+		bufnr = vim.api.nvim_get_current_buf()
+	end
+	if not (bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].modifiable) then
+		return false
+	end
+	if vim.bo[bufnr].filetype == "gitcommit" then
+		return true
+	end
+	local bufname = vim.api.nvim_buf_get_name(bufnr)
+	if
+		bufname:match("COMMIT_EDITMSG$")
+		or bufname:match("MERGE_MSG$")
+		or bufname:match("TAG_EDITMSG$")
+		or bufname:match("EDITMSG$")
+	then
+		return true
+	end
+	return false
+end
+
 --- @param opts table|nil
 function M.setup(opts)
 	M.options = vim.tbl_deep_extend("force", defaults, opts or {})
@@ -205,34 +230,20 @@ function M.generate_commit_msg(opts)
 
 	local current_buf = vim.api.nvim_get_current_buf()
 	local bufnr = nil
-	local is_float = false
+	local target_floater = false
 
-	if M.float_bufnr and vim.api.nvim_buf_is_valid(M.float_bufnr) then
-		local win = vim.fn.bufwinid(M.float_bufnr)
-		if win and win ~= -1 then
-			bufnr = M.float_bufnr
-			is_float = true
-		end
-	end
-
-	if not bufnr then
-		if
-			vim.api.nvim_buf_is_valid(current_buf)
-			and vim.bo[current_buf].modifiable
-			and vim.bo[current_buf].filetype == "gitcommit"
-		then
-			bufnr = current_buf
-			is_float = false
-		else
-			bufnr = M.open_commit_floater_win()
-			is_float = true
-		end
+	if M.commit_buf_check(current_buf) then
+		bufnr = current_buf
+		target_floater = (current_buf == M.float_bufnr)
+	else
+		bufnr = M.open_commit_floater_win()
+		target_floater = true
 	end
 
 	local current_line = 0
 	local current_col = 0
 
-	if not is_float then
+	if not target_floater then
 		vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
 	end
 
