@@ -68,6 +68,25 @@ Generate only the commit message text.
    - If you are inside a `gitcommit` buffer, the generated message streams into your current buffer.
    - If invoked from anywhere else, a **floating window** pops up and streams the AI commit message. Press `q`, `Q` or `<Esc>` to close the floating window.
 
+## Recommended Setup
+
+> [!IMPORTANT]
+> It is **strongly recommended** to set Neovim as your default Git commit editor.
+> Without this, running `git commit` on `:term` or pressing `Shift+C` in Lazygit may open a different editor (e.g. Vim, Nano), where this plugin is not available.
+
+### Set Neovim as your Git editor
+
+```bash
+git config --global core.editor "nvim"
+```
+
+Or set it in your shell config (`~/.bashrc`, `~/.zshrc`, etc.):
+
+```bash
+export EDITOR="nvim"
+export VISUAL="nvim"
+```
+
 ## License
 
 MIT
