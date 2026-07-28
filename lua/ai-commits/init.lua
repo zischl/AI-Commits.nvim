@@ -280,40 +280,66 @@ function M.generate_commit_msg(opts)
 							generated_text = true
 							local text = part.text:gsub("\r", "")
 							vim.schedule(function()
-								if vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].modifiable then
-									local lines = vim.split(text, "\n", { plain = true })
-									for idx, l in ipairs(lines) do
-										if idx == 1 then
-											local existing_line = vim.api.nvim_buf_get_lines(
-												bufnr,
-												current_line,
-												current_line + 1,
-												false
-											)[1] or ""
-											local new_line = existing_line:sub(1, current_col)
-												.. l
-												.. existing_line:sub(current_col + 1)
-											pcall(
-												vim.api.nvim_buf_set_lines,
-												bufnr,
-												current_line,
-												current_line + 1,
-												false,
-												{ new_line }
+								if not vim.api.nvim_buf_is_valid(bufnr) then
+									return
+								end
+								if not vim.bo[bufnr].modifiable or vim.bo[bufnr].readonly then
+									vim.notify(
+										"AI Commits: buffer is not writable (modifiable="
+											.. tostring(vim.bo[bufnr].modifiable)
+											.. ", readonly="
+											.. tostring(vim.bo[bufnr].readonly)
+											.. ")",
+										vim.log.levels.ERROR
+									)
+									return
+								end
+								local lines = vim.split(text, "\n", { plain = true })
+								for idx, l in ipairs(lines) do
+									if idx == 1 then
+										local existing_line = vim.api.nvim_buf_get_lines(
+											bufnr,
+											current_line,
+											current_line + 1,
+											false
+										)[1] or ""
+										local new_line = existing_line:sub(1, current_col)
+											.. l
+											.. existing_line:sub(current_col + 1)
+										local write_ok, err = pcall(
+											vim.api.nvim_buf_set_lines,
+											bufnr,
+											current_line,
+											current_line + 1,
+											false,
+											{ new_line }
+										)
+										if not write_ok then
+											vim.notify(
+												"AI Commits: buffer write failed: " .. tostring(err),
+												vim.log.levels.ERROR
 											)
-											current_col = current_col + #l
-										else
-											current_line = current_line + 1
-											pcall(
-												vim.api.nvim_buf_set_lines,
-												bufnr,
-												current_line,
-												current_line,
-												false,
-												{ l }
-											)
-											current_col = #l
+											return
 										end
+										current_col = current_col + #l
+									else
+										current_line = current_line + 1
+										local write_ok, err = pcall(
+											vim.api.nvim_buf_set_lines,
+											bufnr,
+											current_line,
+											current_line,
+											false,
+											{ l }
+										)
+										if not write_ok then
+											vim.notify(
+												"AI Commits: buffer write failed: " .. tostring(err),
+												vim.log.levels.ERROR
+											)
+											return
+										end
+										current_col = #l
 									end
 								end
 							end)
@@ -334,15 +360,23 @@ function M.generate_commit_msg(opts)
 			end
 
 			data[1] = partial_line .. data[1]
-			partial_line = data[#data]
 
-			for i = 1, #data - 1 do
-				process_sse_line(data[i])
+			for i = 1, #data do
+				if i < #data then
+					process_sse_line(data[i])
+				else
+					if data[i] == "" then
+						partial_line = ""
+					else
+						partial_line = data[i]
+					end
+				end
 			end
 		end,
 		on_exit = function(_, exit_code)
 			if partial_line ~= "" then
 				process_sse_line(partial_line)
+				partial_line = ""
 			end
 			os.remove(temp_file)
 			vim.schedule(function()
